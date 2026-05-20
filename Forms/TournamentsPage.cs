@@ -271,15 +271,17 @@ namespace HemaLeagueManager.Forms
 
         private void Add()
         {
-            // Tournaments must live inside a league. If none exists, prompt the
-            // user (via MainForm) to create one before continuing.
             if (!_ensureLeague()) return;
 
             var league = _getLeague();
             if (league.IsClosed) { MessageBox.Show("League is closed."); return; }
-            if (league.Fencers.Count == 0) { MessageBox.Show("Add fencers first."); return; }
+            if (league.Fencers.Count(f => league.AllowsFencer(f)) == 0)
+            {
+                MessageBox.Show("Add at least one fencer eligible for this league first.");
+                return;
+            }
 
-            using var dlg = new TournamentForm(league.Fencers);
+            using var dlg = new TournamentForm(league);
             if (dlg.ShowDialog(this) == DialogResult.OK)
             {
                 league.Tournaments.Add(dlg.Tournament);
@@ -291,7 +293,7 @@ namespace HemaLeagueManager.Forms
         {
             if (_list.SelectedItem is not Tournament t) return;
             var league = _getLeague();
-            using var dlg = new TournamentForm(league.Fencers, t);
+            using var dlg = new TournamentForm(league, t);
             if (dlg.ShowDialog(this) == DialogResult.OK) _onChanged();
         }
 

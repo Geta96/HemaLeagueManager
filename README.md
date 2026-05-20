@@ -6,6 +6,7 @@
 Features:
 
 - The user can add Fencers, Clubs, Tournaments, Leagues
+- Leagues can be Gender specific
 - The user can create Tournaments in a League
 - A tournnament can be a Grand Prix (double points)
 - The user can assign Fencers to Tournaments

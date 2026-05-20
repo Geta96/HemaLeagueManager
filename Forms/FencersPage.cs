@@ -188,7 +188,9 @@ namespace HemaLeagueManager.Forms
             _grid.BeginUpdate();
             _grid.Items.Clear();
 
-            var query = league.Fencers.AsEnumerable();
+            var query = league.Fencers.AsEnumerable()
+                .Where(f => league.AllowsFencer(f));        // gender filter
+
             if (filterFull != null)
                 query = query.Where(f => f.ClubName.Equals(filterFull, StringComparison.OrdinalIgnoreCase));
 
@@ -218,10 +220,12 @@ namespace HemaLeagueManager.Forms
             }
             _grid.EndUpdate();
 
-            int total = league.Fencers.Count;
+            int total = league.Fencers.Count(f => league.AllowsFencer(f));
             int shown = _grid.Items.Count;
             _countLabel.Text = filterFull == null
-                ? $"{total} fencers   •   {league.Tournaments.Count} tournaments" +
+                ? $"{total} fencers" +
+                  (league.Gender == LeagueGender.Open ? "" : $" ({league.GenderLabel})") +
+                  $"   •   {league.Tournaments.Count} tournaments" +
                   (league.IsClosed ? "   •   League closed" : "")
                 : $"Showing {shown} of {total} fencers in club '{filterShort}'";
         }

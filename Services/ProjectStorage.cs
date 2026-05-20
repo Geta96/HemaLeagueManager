@@ -28,7 +28,8 @@ namespace HemaLeagueManager.Services
 
             foreach (var league in project.Leagues)
             {
-                w.WriteLine($"#LEAGUE,{Escape(league.Name)},{league.IsClosed}");
+                // Columns: name, isClosed, gender (Open / Male / Female)
+                w.WriteLine($"#LEAGUE,{Escape(league.Name)},{league.IsClosed},{league.Gender}");
                 foreach (var t in league.Tournaments)
                 {
                     var placements = string.Join("|", t.Placements.Select(Escape));
@@ -64,12 +65,15 @@ namespace HemaLeagueManager.Services
                             section = "#CLUBS";
                             break;
                         case "#LEAGUE":
-                            currentLeague = new League
+                            var league = new League
                             {
                                 Name = head.Length > 1 ? Unescape(head[1]) : "",
                                 IsClosed = head.Length > 2 && bool.TryParse(head[2], out var c) && c
                             };
-                            project.Leagues.Add(currentLeague);
+                            if (head.Length > 3 && Enum.TryParse<LeagueGender>(head[3], true, out var g))
+                                league.Gender = g;
+                            project.Leagues.Add(league);
+                            currentLeague = league;
                             section = "#LEAGUE";
                             break;
                         case "#TOURNAMENT" when currentLeague != null:

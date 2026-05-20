@@ -28,6 +28,7 @@ namespace HemaLeagueManager.Forms
         private const int SidebarWidth = 280;
 
         private readonly List<FlatButton> _navButtons = new();
+        private readonly List<Fencer> _availableFencers;
 
         public MainForm()
         {
@@ -241,14 +242,14 @@ namespace HemaLeagueManager.Forms
             stack.Controls.Add(BuildSidebarButton("+  New League",        (s, e) => { CloseSidebar(); NewLeague(); }, primary: true));
             stack.Controls.Add(BuildSidebarButton("Switch League",        (s, e) => { CloseSidebar(); SwitchLeague(); }));
             stack.Controls.Add(BuildSidebarButton("Close League",         (s, e) => { CloseSidebar(); CloseLeague(); }));
-            stack.Controls.Add(BuildSidebarButton("Start Empty Project",  (s, e) => { CloseSidebar(); StartEmptyProject(); }));
 
             stack.Controls.Add(BuildSidebarSectionLabel("FILE"));
-            stack.Controls.Add(BuildSidebarButton("Save As…",          (s, e) => { CloseSidebar(); SaveAs(); }));
-            stack.Controls.Add(BuildSidebarButton("Load From File",    (s, e) => { CloseSidebar(); LoadFromFile(); }));
-            stack.Controls.Add(BuildSidebarButton("Export PDF Report", (s, e) => { CloseSidebar(); ExportPdf(); }));
+            stack.Controls.Add(BuildSidebarButton("Save As…",            (s, e) => { CloseSidebar(); SaveAs(); }));
+            stack.Controls.Add(BuildSidebarButton("Load From File",      (s, e) => { CloseSidebar(); LoadFromFile(); }));
+            stack.Controls.Add(BuildSidebarButton("Start Empty Project", (s, e) => { CloseSidebar(); StartEmptyProject(); }));
 
             stack.Controls.Add(BuildSidebarSectionLabel("ABOUT"));
+            stack.Controls.Add(BuildSidebarButton("Export PDF Report", (s, e) => { CloseSidebar(); ExportPdf(); }));
             stack.Controls.Add(BuildSidebarButton("Open Data Folder",  (s, e) =>
             {
                 CloseSidebar();
@@ -417,7 +418,9 @@ namespace HemaLeagueManager.Forms
         {
             _subtitleLabel.Text = string.IsNullOrWhiteSpace(_league.Name)
                 ? "No league loaded"
-                : $"{_league.Name}{(_league.IsClosed ? "  •  Closed" : "")}";
+                : $"{_league.Name}" +
+                  (_league.Gender == LeagueGender.Open ? "" : $"  •  {_league.GenderLabel}") +
+                  (_league.IsClosed ? "  •  Closed" : "");
             if (_subtitleLabel.Parent is Panel p) PositionSubtitle(p);
 
             _fencersPage.Refresh();
@@ -433,7 +436,12 @@ namespace HemaLeagueManager.Forms
             if (dlg.ShowDialog(this) != DialogResult.OK) return;
             if (string.IsNullOrWhiteSpace(dlg.LeagueName)) return;
 
-            var league = new League { Name = dlg.LeagueName, Fencers = FencerRegistry.All };
+            var league = new League
+            {
+                Name = dlg.LeagueName,
+                Gender = dlg.Gender,
+                Fencers = FencerRegistry.All
+            };
             _project.Leagues.Add(league);
             _league = league;
             _project.ActiveLeagueName = league.Name;
@@ -632,6 +640,11 @@ namespace HemaLeagueManager.Forms
         {
             _standingsView.Items.Clear();
             var standings = ScoringSystem.CalculateStandings(_league)
+                .Where(kv =>
+                {
+                    var f = _league.Fencers.FirstOrDefault(x => x.Name == kv.Key);
+                    return _league.AllowsFencer(f);
+                })
                 .OrderByDescending(kv => kv.Value)
                 .ToList();
 

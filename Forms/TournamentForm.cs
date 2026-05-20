@@ -11,6 +11,7 @@ namespace HemaLeagueManager.Forms
     public class TournamentForm : Form
     {
         private readonly List<Fencer> _availableFencers;
+        private readonly League _league = null!;
         public Tournament Tournament { get; private set; }
 
         private TextBox _nameBox = null!;
@@ -24,6 +25,14 @@ namespace HemaLeagueManager.Forms
         public TournamentForm(List<Fencer> fencers, Tournament? existing = null)
         {
             _availableFencers = fencers;
+            Tournament = existing ?? new Tournament();
+            BuildUi();
+            LoadData();
+        }
+
+        public TournamentForm(League league, Tournament? existing = null)
+        {
+            _league = league;
             Tournament = existing ?? new Tournament();
             BuildUi();
             LoadData();
@@ -279,9 +288,14 @@ namespace HemaLeagueManager.Forms
                 Padding = new Padding(0, 8, 0, 0),
                 BackColor = UiTheme.Surface
             };
-            var btnAdd = new FlatButton { Text = "Add to placements  →", Width = 200, Height = 34, IsPrimary = true };
+            var btnAdd = new FlatButton { Text = "Add to placements  →", Width = 180, Height = 34, IsPrimary = true };
             btnAdd.Click += (s, e) => AddSelected();
+
+            var btnNewFencer = new FlatButton { Text = "+ New Fencer", Width = 130, Height = 34 };
+            btnNewFencer.Click += (s, e) => AddNewFencer();
+
             btnRow.Controls.Add(btnAdd);
+            btnRow.Controls.Add(btnNewFencer);
 
             card.Controls.Add(_availableList);
             card.Controls.Add(filterSpacer);
@@ -382,7 +396,7 @@ namespace HemaLeagueManager.Forms
 
             foreach (var name in Tournament.Placements)
             {
-                var f = _availableFencers.FirstOrDefault(x => x.Name == name);
+                var f = _league.Fencers.FirstOrDefault(x => x.Name == name);
                 if (f != null) AppendPlacement(f);
             }
             RefreshAvailable();
@@ -400,7 +414,8 @@ namespace HemaLeagueManager.Forms
 
             _availableList.BeginUpdate();
             _availableList.Items.Clear();
-            foreach (var f in _availableFencers
+            foreach (var f in _league.Fencers
+                .Where(f => _league.AllowsFencer(f))          // gender rule
                 .Where(f => !placedNames.Contains(f.Name))
                 .Where(f => string.IsNullOrEmpty(filter)
                             || f.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
@@ -497,6 +512,29 @@ namespace HemaLeagueManager.Forms
                 .Cast<ListViewItem>()
                 .Select(i => ((Fencer)i.Tag!).Name)
                 .ToList();
+        }
+
+        private void AddNewFencer()
+        {
+            if (ClubRegistry.All.Count == 0)
+            {
+                MessageBox.Show("Create at least one club first (Clubs tab).");
+                return;
+            }
+
+            using var dlg = new FencerInputDialog();
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            if (_league.Fencers.Any(x => x.Name.Equals(dlg.Result.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show("A fencer with this name already exists.");
+                return;
+            }
+
+            // Roster is shared with FencerRegistry.All; the host page autosaves
+            // once this dialog closes.
+            _league.Fencers.Add(dlg.Result);
+            RefreshAvailable();
         }
     }
 }

@@ -24,27 +24,26 @@ namespace HemaLeagueManager.Services
             var result = new List<ClubStats>();
             foreach (var club in clubs)
             {
-                var clubFencers = league.Fencers
+                var members = league.Fencers
                     .Where(f => f.ClubName.Equals(club.Name, System.StringComparison.OrdinalIgnoreCase))
+                    .Where(f => league.AllowsFencer(f))     // gender filter
                     .ToList();
 
-                int total = clubFencers.Sum(f => totals.TryGetValue(f.Name, out var p) ? p : 0);
-                int count = clubFencers.Count;
+                int total = members.Sum(f => ScoringSystem.GetTotalPointsForFencer(league, f.Name));
+                int count = members.Count;
                 double avg = count == 0 ? 0 : (double)total / count;
 
-                var best = clubFencers
-                    .Select(f => (f.Name, Pts: totals.TryGetValue(f.Name, out var p) ? p : 0))
+                var best = members
+                    .Select(f => new { f.Name, Pts = ScoringSystem.GetTotalPointsForFencer(league, f.Name) })
                     .OrderByDescending(x => x.Pts)
                     .FirstOrDefault();
 
-                int tournaments = league.Tournaments
-                    .Count(t => t.Placements.Any(name =>
-                        fencerByName.TryGetValue(name, out var f) &&
-                        f.ClubName.Equals(club.Name, System.StringComparison.OrdinalIgnoreCase)));
+                int tournamentsParticipated = league.Tournaments
+                    .Count(t => t.Placements.Any(p => members.Any(m => m.Name == p)));
 
                 result.Add(new ClubStats(
                     club.Name, club.City, count, total, avg,
-                    best.Pts, best.Name ?? "", tournaments));
+                    best?.Pts ?? 0, best?.Name ?? "", tournamentsParticipated));
             }
             return result;
         }

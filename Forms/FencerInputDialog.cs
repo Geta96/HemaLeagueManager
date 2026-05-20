@@ -37,7 +37,7 @@ namespace HemaLeagueManager.Forms
                 Left = 110, Top = 53, Width = 250,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
-            _sexBox.Items.AddRange(new object[] { "Male", "Female", "Other" });
+            _sexBox.Items.AddRange(new object[] { "Male", "Female", "Unspecified" });
             Controls.Add(_sexBox);
 
             Controls.Add(new Label { Text = "Club:", Left = 16, Top = 94, Width = 80 });
@@ -97,11 +97,17 @@ namespace HemaLeagueManager.Forms
 
         private void AddNewClub()
         {
-            var name = Microsoft.VisualBasic.Interaction.InputBox("Club name:", "New Club", "");
-            if (string.IsNullOrWhiteSpace(name)) return;
-            var city = Microsoft.VisualBasic.Interaction.InputBox("City (optional):", "New Club", "");
-            var club = ClubRegistry.AddIfMissing(name.Trim(), city.Trim());
-            ClubRegistry.Save();
+            using var dlg = new ClubInputDialog();
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            if (string.IsNullOrWhiteSpace(dlg.Result.Name)) return;
+
+            if (ClubRegistry.Exists(dlg.Result.Name))
+            {
+                MessageBox.Show("A club with this name already exists.");
+                return;
+            }
+
+            var club = ClubRegistry.AddIfMissing(dlg.Result.Name, dlg.Result.ShortName, dlg.Result.City);
             ReloadClubs();
             _clubBox.SelectedItem = club.Name;
         }

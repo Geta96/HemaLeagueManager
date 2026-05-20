@@ -28,7 +28,6 @@ namespace HemaLeagueManager.Forms
         private const int SidebarWidth = 280;
 
         private readonly List<FlatButton> _navButtons = new();
-        private readonly List<Fencer> _availableFencers;
 
         // Sidebar animation
         private System.Windows.Forms.Timer? _sidebarTimer;

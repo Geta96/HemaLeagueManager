@@ -10,7 +10,6 @@ namespace HemaLeagueManager.Forms
 {
     public class TournamentForm : Form
     {
-        private readonly List<Fencer> _availableFencers;
         private readonly League _league = null!;
         public Tournament Tournament { get; private set; }
 
@@ -24,7 +23,6 @@ namespace HemaLeagueManager.Forms
 
         public TournamentForm(List<Fencer> fencers, Tournament? existing = null)
         {
-            _availableFencers = fencers;
             Tournament = existing ?? new Tournament();
             BuildUi();
             LoadData();

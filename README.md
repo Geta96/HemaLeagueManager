@@ -16,3 +16,4 @@ Features:
 - Edit of already existing entries
 - Save and Load Feature
 - Autosave and Load Feature
+- Export data to PDF 

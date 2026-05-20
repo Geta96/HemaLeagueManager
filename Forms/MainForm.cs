@@ -265,6 +265,7 @@ namespace HemaLeagueManager.Forms
             stack.Controls.Add(BuildSidebarSectionLabel("FILE"));
             stack.Controls.Add(BuildSidebarButton("Save As…",          (s, e) => { CloseSidebar(); SaveAs(); }));
             stack.Controls.Add(BuildSidebarButton("Load From File",    (s, e) => { CloseSidebar(); LoadFromFile(); }));
+            stack.Controls.Add(BuildSidebarButton("Export PDF Report", (s, e) => { CloseSidebar(); ExportPdf(); }));
 
             stack.Controls.Add(BuildSidebarSectionLabel("ABOUT"));
             stack.Controls.Add(BuildSidebarButton("Open Data Folder",  (s, e) =>
@@ -544,6 +545,40 @@ namespace HemaLeagueManager.Forms
                 FencerRegistry.Save();
                 UpdateAutosaveStatus();
                 RefreshAll();
+            }
+        }
+
+        private void ExportPdf()
+        {
+            if (string.IsNullOrWhiteSpace(_league.Name))
+            {
+                MessageBox.Show("Create or load a league first.");
+                return;
+            }
+
+            using var dlg = new SaveFileDialog
+            {
+                Filter = "PDF document (*.pdf)|*.pdf",
+                FileName = $"{_league.Name} - Report.pdf"
+            };
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            try
+            {
+                PdfReportService.Generate(_league, dlg.FileName);
+                if (MessageBox.Show($"Saved to:\n{dlg.FileName}\n\nOpen now?", "PDF Exported",
+                        MessageBoxButtons.YesNo) == DialogResult.Yes)
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = dlg.FileName,
+                        UseShellExecute = true
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("PDF export failed:\n" + ex.Message, "Error");
             }
         }
 

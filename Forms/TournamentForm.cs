@@ -344,9 +344,9 @@ namespace HemaLeagueManager.Forms
                 BackColor = UiTheme.Surface
             };
             var btnUp = new FlatButton { Text = "▲  Up", Width = 80, Height = 34 };
-            btnUp.Click += (s, e) => Move(-1);
+            btnUp.Click += (s, e) => MovePlacement(-1);
             var btnDown = new FlatButton { Text = "▼  Down", Width = 90, Height = 34 };
-            btnDown.Click += (s, e) => Move(1);
+            btnDown.Click += (s, e) => MovePlacement(1);
             var btnRemove = new FlatButton { Text = "Remove", Width = 100, Height = 34 };
             btnRemove.SetColors(UiTheme.Danger, UiTheme.DangerHover, Color.White);
             btnRemove.Click += (s, e) => RemoveSelected();
@@ -438,7 +438,7 @@ namespace HemaLeagueManager.Forms
             RenumberPlacements();
         }
 
-        private void Move(int delta)
+        private void MovePlacement(int delta)
         {
             if (_placementView.SelectedItems.Count == 0) return;
             int i = _placementView.SelectedIndices[0];

@@ -8,7 +8,7 @@ using HemaLeagueManager.Services;
 
 namespace HemaLeagueManager.Forms
 {
-    public class MainForm : Form
+    public class MainForm : Form, IMessageFilter
     {
         private Project _project = new Project();
         private League _league = new League();   // currently active league inside _project
@@ -29,6 +29,13 @@ namespace HemaLeagueManager.Forms
 
         private readonly List<FlatButton> _navButtons = new();
         private readonly List<Fencer> _availableFencers;
+
+        // Sidebar animation
+        private System.Windows.Forms.Timer? _sidebarTimer;
+        private int _sidebarTargetX;
+        private bool _hideSidebarWhenDone;
+        private const int SidebarStep = 28;     // px per tick — feels brisk but smooth
+        private const int SidebarInterval = 12; // ms ~ 80fps
 
         public MainForm()
         {
@@ -241,7 +248,6 @@ namespace HemaLeagueManager.Forms
             stack.Controls.Add(BuildSidebarSectionLabel("LEAGUE"));
             stack.Controls.Add(BuildSidebarButton("+  New League",        (s, e) => { CloseSidebar(); NewLeague(); }, primary: true));
             stack.Controls.Add(BuildSidebarButton("Switch League",        (s, e) => { CloseSidebar(); SwitchLeague(); }));
-            stack.Controls.Add(BuildSidebarButton("Close League",         (s, e) => { CloseSidebar(); CloseLeague(); }));
 
             stack.Controls.Add(BuildSidebarSectionLabel("FILE"));
             stack.Controls.Add(BuildSidebarButton("Save As…",            (s, e) => { CloseSidebar(); SaveAs(); }));
@@ -277,9 +283,9 @@ namespace HemaLeagueManager.Forms
 
         private Panel BuildSidebarOverlay()
         {
-            var p = new Panel { BackColor = Color.Black, Visible = false };
-            p.Click += (s, e) => CloseSidebar();
-            return p;
+            // Intentionally invisible — clicks outside the sidebar are handled
+            // by IMessageFilter so the tab content stays fully visible.
+            return new Panel { Visible = false };
         }
 
         private Label BuildSidebarSectionLabel(string text) => new()
@@ -312,30 +318,107 @@ namespace HemaLeagueManager.Forms
 
         private void LayoutSidebar()
         {
-            if (_sidebar == null || _sidebarOverlay == null) return;
+            if (_sidebar == null) return;
             _sidebar.Height = ClientSize.Height;
-            _sidebar.Location = new Point(_sidebar.Visible ? 0 : -SidebarWidth, 0);
-            _sidebarOverlay.Bounds = new Rectangle(_sidebar.Width, 0,
-                ClientSize.Width - _sidebar.Width, ClientSize.Height);
+            // Don't snap X here while animating; only correct it when hidden.
+            if (!_sidebar.Visible)
+                _sidebar.Location = new Point(-SidebarWidth, 0);
         }
 
         private void ToggleSidebar()
         {
-            if (_sidebar.Visible) CloseSidebar(); else OpenSidebar();
+            if (_sidebar.Visible && _sidebar.Left >= 0) CloseSidebar();
+            else OpenSidebar();
         }
 
         private void OpenSidebar()
         {
-            _sidebar.Visible = true;
-            _sidebarOverlay.Visible = true;
+            // Make sure we start fully off-screen so the slide looks right.
+            if (!_sidebar.Visible)
+            {
+                _sidebar.Location = new Point(-SidebarWidth, 0);
+                _sidebar.Visible = true;
+            }
             _sidebar.BringToFront();
-            LayoutSidebar();
+
+            // Catch any click outside the sidebar to close it (no dim panel needed).
+            Application.AddMessageFilter(this);
+
+            AnimateSidebar(targetX: 0, hideWhenDone: false);
         }
 
         private void CloseSidebar()
         {
-            _sidebar.Visible = false;
-            _sidebarOverlay.Visible = false;
+            Application.RemoveMessageFilter(this);
+            if (_sidebar == null || !_sidebar.Visible) return;
+            AnimateSidebar(targetX: -SidebarWidth, hideWhenDone: true);
+        }
+
+        private void AnimateSidebar(int targetX, bool hideWhenDone)
+        {
+            _sidebarTargetX = targetX;
+            _hideSidebarWhenDone = hideWhenDone;
+
+            if (_sidebarTimer == null)
+            {
+                _sidebarTimer = new System.Windows.Forms.Timer { Interval = SidebarInterval };
+                _sidebarTimer.Tick += SidebarTimer_Tick;
+            }
+            _sidebarTimer.Start();
+        }
+
+        private void SidebarTimer_Tick(object? sender, EventArgs e)
+        {
+            int x = _sidebar.Left;
+            int dist = _sidebarTargetX - x;
+
+            if (Math.Abs(dist) <= SidebarStep)
+            {
+                _sidebar.Left = _sidebarTargetX;
+                _sidebarTimer!.Stop();
+
+                if (_hideSidebarWhenDone)
+                {
+                    _sidebar.Visible = false;
+                    // "Navigate back" — restore focus to the currently active tab.
+                    _tabs.SelectedTab?.Focus();
+                }
+                return;
+            }
+
+            // Ease-out: move a fraction of the remaining distance, but at least SidebarStep
+            // so we never crawl. Looks like a soft glide instead of constant velocity.
+            int step = Math.Max(SidebarStep, Math.Abs(dist) / 4);
+            _sidebar.Left = x + Math.Sign(dist) * step;
+        }
+
+        // ---- IMessageFilter ----
+        public bool PreFilterMessage(ref Message m)
+        {
+            const int WM_LBUTTONDOWN = 0x0201;
+            const int WM_RBUTTONDOWN = 0x0204;
+
+            if ((m.Msg == WM_LBUTTONDOWN || m.Msg == WM_RBUTTONDOWN) &&
+                _sidebar != null && _sidebar.Visible)
+            {
+                var screen = Cursor.Position;
+                var sidebarRect = _sidebar.RectangleToScreen(_sidebar.ClientRectangle);
+                if (!sidebarRect.Contains(screen))
+                {
+                    CloseSidebar();
+                    // Let the click through so the user's intended target (a tab,
+                    // a button, etc.) receives it. Returning false = don't swallow.
+                }
+            }
+            return false;
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            Application.RemoveMessageFilter(this);
+            _sidebarTimer?.Stop();
+            _sidebarTimer?.Dispose();
+            base.OnFormClosed(e);
         }
 
         // ---- Standings Tab ----
@@ -453,36 +536,28 @@ namespace HemaLeagueManager.Forms
 
         private void SwitchLeague()
         {
-            if (_project.Leagues.Count == 0)
-            {
-                ConfirmDialog.Ask(this, "Switch League",
-                    "There are no leagues yet. Create one first via 'New League'.",
-                    yesText: "OK", noText: "Cancel");
-                return;
-            }
-
             using var dlg = new SwitchLeagueDialog(_project.Leagues, _project.ActiveLeagueName);
-            if (dlg.ShowDialog(this) == DialogResult.OK && dlg.SelectedLeague != null)
+            var result = dlg.ShowDialog(this);
+
+            // The dialog may have added or removed leagues even on Cancel.
+            // Re-bind every league's fencer list and resync the active one.
+            foreach (var l in _project.Leagues)
+                l.Fencers = FencerRegistry.All;
+
+            if (result == DialogResult.OK && dlg.SelectedLeague != null)
             {
                 _league = dlg.SelectedLeague;
-                _league.Fencers = FencerRegistry.All;   // re-bind shared list
+                _league.Fencers = FencerRegistry.All;
                 _project.ActiveLeagueName = _league.Name;
-                AutosaveProject();
-                UpdateAutosaveStatus();
-                RefreshAll();
             }
-        }
+            else if (!_project.Leagues.Contains(_league))
+            {
+                // The active league was deleted while the dialog was open.
+                _league = _project.Leagues.FirstOrDefault()
+                    ?? new League { Fencers = FencerRegistry.All };
+                _project.ActiveLeagueName = _league.Name ?? "";
+            }
 
-        private void CloseLeague()
-        {
-            if (string.IsNullOrWhiteSpace(_league.Name)) return;
-
-            var yes = ConfirmDialog.Ask(this, "Close League",
-                "Close the current league?\n\nIt will become read-only until you create or load another league.",
-                yesText: "Close", noText: "Cancel", primaryYes: false);
-            if (!yes) return;
-
-            _league.IsClosed = true;
             AutosaveProject();
             UpdateAutosaveStatus();
             RefreshAll();

@@ -16,6 +16,7 @@ namespace HemaLeagueManager.Forms
         private TabControl _tabs = null!;
         private FencersPage _fencersPage = null!;
         private TournamentsPage _tournamentsPage = null!;
+        private ClubsPage _clubsPage = null!;
         private ListView _standingsView = null!;
         private Label _titleLabel = null!;
         private Label _subtitleLabel = null!;
@@ -32,10 +33,14 @@ namespace HemaLeagueManager.Forms
         {
             // Load global fencer roster first so it's available everywhere.
             FencerRegistry.Load();
+            ClubRegistry.Load();
 
             BuildUi();
             TryLoadAutosave();
             EnsureSharedFencers();
+            // Migrate: ensure all club names referenced by fencers exist in the registry.
+            ClubRegistry.EnsureFromFencers(_league.Fencers);
+            ClubRegistry.Save();
             RefreshAll();
         }
 
@@ -69,16 +74,22 @@ namespace HemaLeagueManager.Forms
 
             _fencersPage = new FencersPage(() => _league, OnDataChanged);
             _tournamentsPage = new TournamentsPage(() => _league, OnDataChanged);
+            _clubsPage = new ClubsPage(() => _league, OnDataChanged);
 
             var fencersTab = new TabPage("Fencers") { BackColor = UiTheme.Background };
             fencersTab.Controls.Add(_fencersPage);
 
+            var clubsTab = new TabPage("Clubs") { BackColor = UiTheme.Background };
+            clubsTab.Controls.Add(_clubsPage);
+
             var tournamentsTab = new TabPage("Tournaments") { BackColor = UiTheme.Background };
             tournamentsTab.Controls.Add(_tournamentsPage);
 
-            _tabs.TabPages.Add(fencersTab);
-            _tabs.TabPages.Add(tournamentsTab);
-            _tabs.TabPages.Add(BuildStandingsTab());
+            _tabs.TabPages.Add(fencersTab);     // index 0
+            _tabs.TabPages.Add(clubsTab);       // index 1
+            _tabs.TabPages.Add(tournamentsTab); // index 2
+            _tabs.TabPages.Add(BuildStandingsTab()); // index 3
+
             _tabs.SelectedIndexChanged += (s, e) =>
             {
                 SyncNavSelection();
@@ -165,8 +176,9 @@ namespace HemaLeagueManager.Forms
                 Padding = new Padding(0, 6, 0, 6)
             };
             navRow.Controls.Add(CreateNavButton("Fencers", 0));
-            navRow.Controls.Add(CreateNavButton("Tournaments", 1));
-            navRow.Controls.Add(CreateNavButton("Standings", 2));
+            navRow.Controls.Add(CreateNavButton("Clubs", 1));
+            navRow.Controls.Add(CreateNavButton("Tournaments", 2));
+            navRow.Controls.Add(CreateNavButton("Standings", 3));
 
             header.Controls.Add(navRow);
             header.Controls.Add(titleRow);
@@ -386,10 +398,9 @@ namespace HemaLeagueManager.Forms
         // ---- Autosave on every change ----
         private void OnDataChanged()
         {
-            // Persist global fencer registry (independent of any single league).
             FencerRegistry.Save();
+            ClubRegistry.Save();
 
-            // Autosave the active league.
             LeagueLibrary.SaveAutosave(_league);
 
             if (!string.IsNullOrEmpty(_leaguePath))
@@ -420,6 +431,7 @@ namespace HemaLeagueManager.Forms
             if (_subtitleLabel.Parent is Panel p) PositionSubtitle(p);
 
             _fencersPage.Refresh();
+            _clubsPage.Refresh();
             _tournamentsPage.Refresh();
             RefreshStandings();
         }
@@ -571,6 +583,7 @@ namespace HemaLeagueManager.Forms
             if (!string.IsNullOrWhiteSpace(_league.Name))
                 LeagueLibrary.SaveAutosave(_league);
             FencerRegistry.Save();
+            ClubRegistry.Save();
             base.OnFormClosing(e);
         }
     }

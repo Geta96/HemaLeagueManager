@@ -1,11 +1,17 @@
 # FencingLeagueProject
 
+- to build the newest version run build.bat
+- find .exe under /publish
+
 Features:
 
-- The user can add Fencers, Tournaments, Leagues
+- The user can add Fencers, Clubs, Tournaments, Leagues
 - The user can create Tournaments in a League
 - The user can assign Fencers to Tournaments
+- The user can assign Clubs to Fencers
 - League Score is calculated automatically for each fencer
+- List fencers based on Clubs
+- See club statistics
 - Edit of already existing entries
 - Save and Load Feature
 - Autosave and Load Feature

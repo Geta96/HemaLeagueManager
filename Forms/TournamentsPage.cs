@@ -238,15 +238,17 @@ namespace HemaLeagueManager.Forms
                 return;
             }
 
-            _detailHeader.Text = t.Name;
-            _detailSub.Text = $"{t.Date:dddd, MMMM d, yyyy}   •   {t.Placements.Count} placements";
+            _detailHeader.Text = (t.IsGrandPrix ? "★ " : "") + t.Name;
+            _detailSub.Text =
+                $"{t.Date:dddd, MMMM d, yyyy}   •   {t.Placements.Count} placements" +
+                (t.IsGrandPrix ? "   •   Grand Prix (×2 points)" : "");
 
             var league = _getLeague();
             for (int i = 0; i < t.Placements.Count; i++)
             {
                 var name = t.Placements[i];
                 var fencer = league.Fencers.FirstOrDefault(f => f.Name == name);
-                var pts = ScoringSystem.GetPointsForPlacement(i);
+                var pts = ScoringSystem.GetPointsForPlacement(i, t);   // applies multiplier
 
                 var item = new ListViewItem(Ordinal(i + 1));
                 item.SubItems.Add(name);

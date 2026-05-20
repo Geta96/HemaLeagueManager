@@ -7,6 +7,7 @@ Features:
 
 - The user can add Fencers, Clubs, Tournaments, Leagues
 - The user can create Tournaments in a League
+- A tournnament can be a Grand Prix (double points)
 - The user can assign Fencers to Tournaments
 - The user can assign Clubs to Fencers
 - League Score is calculated automatically for each fencer

@@ -22,7 +22,8 @@ namespace HemaLeagueManager.Services
             foreach (var t in league.Tournaments)
             {
                 var placements = string.Join("|", t.Placements.Select(Escape));
-                w.WriteLine($"{Escape(t.Name)},{t.Date:yyyy-MM-dd},{placements}");
+                // Columns: Name, Date, Placements, IsGrandPrix
+                w.WriteLine($"{Escape(t.Name)},{t.Date:yyyy-MM-dd},{placements},{t.IsGrandPrix}");
             }
         }
 
@@ -62,6 +63,9 @@ namespace HemaLeagueManager.Services
                         };
                         if (parts.Length > 2 && !string.IsNullOrEmpty(parts[2]))
                             t.Placements = parts[2].Split('|').Select(Unescape).ToList();
+                        // Backward compatible: only read IsGrandPrix if present.
+                        if (parts.Length > 3 && bool.TryParse(parts[3], out var gp))
+                            t.IsGrandPrix = gp;
                         league.Tournaments.Add(t);
                         break;
                 }

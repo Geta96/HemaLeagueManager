@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -15,6 +15,7 @@ namespace HemaLeagueManager.Forms
 
         private TextBox _nameBox = null!;
         private DateTimePicker _datePicker = null!;
+        private CheckBox _grandPrixBox = null!;
         private ListBox _availableList = null!;
         private ListBox _placementList = null!;
 
@@ -29,7 +30,7 @@ namespace HemaLeagueManager.Forms
         private void BuildUi()
         {
             Text = "Tournament";
-            Size = new Size(640, 480);
+            Size = new Size(640, 520);
             StartPosition = FormStartPosition.CenterParent;
             BackColor = Color.FromArgb(45, 35, 25);
             ForeColor = Color.Wheat;
@@ -41,39 +42,49 @@ namespace HemaLeagueManager.Forms
             var lblDate = new Label { Text = "Date:", Left = 12, Top = 45, Width = 130 };
             _datePicker = new DateTimePicker { Left = 150, Top = 42, Width = 250 };
 
-            var lblAvail = new Label { Text = "Available fencers", Left = 12, Top = 80, Width = 280 };
-            _availableList = new ListBox { Left = 12, Top = 100, Width = 280, Height = 280 };
+            _grandPrixBox = new CheckBox
+            {
+                Text = "★  Grand Prix  (points are doubled)",
+                Left = 150, Top = 72, Width = 320, Height = 24,
+                ForeColor = Color.Goldenrod,
+                BackColor = Color.FromArgb(45, 35, 25),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Garamond", 10F, FontStyle.Bold)
+            };
 
-            var lblPlace = new Label { Text = "Placements (1st on top)", Left = 330, Top = 80, Width = 280 };
-            _placementList = new ListBox { Left = 330, Top = 100, Width = 280, Height = 280 };
+            var lblAvail = new Label { Text = "Available fencers", Left = 12, Top = 110, Width = 280 };
+            _availableList = new ListBox { Left = 12, Top = 130, Width = 280, Height = 290 };
 
-            var btnAdd = new Button { Text = "Add ->", Left = 12, Top = 385, Width = 80 };
+            var lblPlace = new Label { Text = "Placements (1st on top)", Left = 330, Top = 110, Width = 280 };
+            _placementList = new ListBox { Left = 330, Top = 130, Width = 280, Height = 290 };
+
+            var btnAdd = new Button { Text = "Add ->", Left = 12, Top = 425, Width = 80 };
             btnAdd.Click += (s, e) =>
             {
                 if (_availableList.SelectedItem is Fencer f && !_placementList.Items.Contains(f))
                     _placementList.Items.Add(f);
             };
 
-            var btnRemove = new Button { Text = "Remove", Left = 100, Top = 385, Width = 80 };
+            var btnRemove = new Button { Text = "Remove", Left = 100, Top = 425, Width = 80 };
             btnRemove.Click += (s, e) =>
             {
                 if (_placementList.SelectedIndex >= 0)
                     _placementList.Items.RemoveAt(_placementList.SelectedIndex);
             };
 
-            var btnUp = new Button { Text = "Up", Left = 330, Top = 385, Width = 60 };
+            var btnUp = new Button { Text = "Up", Left = 330, Top = 425, Width = 60 };
             btnUp.Click += (s, e) => MovePlacement(-1);
 
-            var btnDown = new Button { Text = "Down", Left = 395, Top = 385, Width = 60 };
+            var btnDown = new Button { Text = "Down", Left = 395, Top = 425, Width = 60 };
             btnDown.Click += (s, e) => MovePlacement(1);
 
-            var btnOk = new Button { Text = "Save", Left = 440, Top = 410, Width = 80, DialogResult = DialogResult.OK };
+            var btnOk = new Button { Text = "Save", Left = 440, Top = 450, Width = 80, DialogResult = DialogResult.OK };
             btnOk.Click += (s, e) => SaveAndClose();
-            var btnCancel = new Button { Text = "Cancel", Left = 530, Top = 410, Width = 80, DialogResult = DialogResult.Cancel };
+            var btnCancel = new Button { Text = "Cancel", Left = 530, Top = 450, Width = 80, DialogResult = DialogResult.Cancel };
 
             Controls.AddRange(new Control[]
             {
-                lblName, _nameBox, lblDate, _datePicker,
+                lblName, _nameBox, lblDate, _datePicker, _grandPrixBox,
                 lblAvail, _availableList, lblPlace, _placementList,
                 btnAdd, btnRemove, btnUp, btnDown, btnOk, btnCancel
             });
@@ -95,6 +106,7 @@ namespace HemaLeagueManager.Forms
         {
             _nameBox.Text = Tournament.Name;
             _datePicker.Value = Tournament.Date == default ? DateTime.Today : Tournament.Date;
+            _grandPrixBox.Checked = Tournament.IsGrandPrix;
 
             foreach (var f in _availableFencers)
                 _availableList.Items.Add(f);
@@ -117,6 +129,7 @@ namespace HemaLeagueManager.Forms
 
             Tournament.Name = _nameBox.Text.Trim();
             Tournament.Date = _datePicker.Value.Date;
+            Tournament.IsGrandPrix = _grandPrixBox.Checked;
             Tournament.Placements = _placementList.Items.Cast<Fencer>().Select(f => f.Name).ToList();
         }
     }

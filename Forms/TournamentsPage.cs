@@ -11,16 +11,18 @@ namespace HemaLeagueManager.Forms
     {
         private readonly Func<League> _getLeague;
         private readonly Action _onChanged;
+        private readonly Func<bool> _ensureLeague;
 
         private ListBox _list = null!;
         private ListView _detailView = null!;
         private Label _detailHeader = null!;
         private Label _detailSub = null!;
 
-        public TournamentsPage(Func<League> getLeague, Action onChanged)
+        public TournamentsPage(Func<League> getLeague, Action onChanged, Func<bool> ensureLeague)
         {
             _getLeague = getLeague;
             _onChanged = onChanged;
+            _ensureLeague = ensureLeague;
             BuildUi();
         }
 
@@ -269,6 +271,10 @@ namespace HemaLeagueManager.Forms
 
         private void Add()
         {
+            // Tournaments must live inside a league. If none exists, prompt the
+            // user (via MainForm) to create one before continuing.
+            if (!_ensureLeague()) return;
+
             var league = _getLeague();
             if (league.IsClosed) { MessageBox.Show("League is closed."); return; }
             if (league.Fencers.Count == 0) { MessageBox.Show("Add fencers first."); return; }

@@ -10,8 +10,8 @@ namespace HemaLeagueManager.Forms
 {
     public class MainForm : Form
     {
-        private League _league = new League();
-        private string? _leaguePath;
+        private Project _project = new Project();
+        private League _league = new League();   // currently active league inside _project
 
         private TabControl _tabs = null!;
         private FencersPage _fencersPage = null!;
@@ -31,24 +31,15 @@ namespace HemaLeagueManager.Forms
 
         public MainForm()
         {
-            // Load global fencer roster first so it's available everywhere.
-            FencerRegistry.Load();
-            ClubRegistry.Load();
-
             BuildUi();
-            TryLoadAutosave();
-            EnsureSharedFencers();
-            // Migrate: ensure all club names referenced by fencers exist in the registry.
-            ClubRegistry.EnsureFromFencers(_league.Fencers);
-            ClubRegistry.Save();
+            LoadAutosaveIfAny();
+            BindActiveLeagueFencers();
             RefreshAll();
         }
 
-        /// <summary>Make the active league's fencer list be the global registry list.</summary>
-        private void EnsureSharedFencers()
+        // --- Wire the active league's Fencers list to the shared registry. ---
+        private void BindActiveLeagueFencers()
         {
-            // Merge any fencers that came in from the loaded file, then point at the registry.
-            FencerRegistry.MergeFrom(_league.Fencers);
             _league.Fencers = FencerRegistry.All;
         }
 
@@ -73,28 +64,18 @@ namespace HemaLeagueManager.Forms
             };
 
             _fencersPage = new FencersPage(() => _league, OnDataChanged);
-            _tournamentsPage = new TournamentsPage(() => _league, OnDataChanged);
+            _tournamentsPage = new TournamentsPage(() => _league, OnDataChanged, EnsureLeagueOrCreate);
             _clubsPage = new ClubsPage(() => _league, OnDataChanged);
 
-            var fencersTab = new TabPage("Fencers") { BackColor = UiTheme.Background };
-            fencersTab.Controls.Add(_fencersPage);
+            var fencersTab     = new TabPage("Fencers")     { BackColor = UiTheme.Background }; fencersTab.Controls.Add(_fencersPage);
+            var clubsTab       = new TabPage("Clubs")       { BackColor = UiTheme.Background }; clubsTab.Controls.Add(_clubsPage);
+            var tournamentsTab = new TabPage("Tournaments") { BackColor = UiTheme.Background }; tournamentsTab.Controls.Add(_tournamentsPage);
 
-            var clubsTab = new TabPage("Clubs") { BackColor = UiTheme.Background };
-            clubsTab.Controls.Add(_clubsPage);
-
-            var tournamentsTab = new TabPage("Tournaments") { BackColor = UiTheme.Background };
-            tournamentsTab.Controls.Add(_tournamentsPage);
-
-            _tabs.TabPages.Add(fencersTab);     // index 0
-            _tabs.TabPages.Add(clubsTab);       // index 1
-            _tabs.TabPages.Add(tournamentsTab); // index 2
-            _tabs.TabPages.Add(BuildStandingsTab()); // index 3
-
-            _tabs.SelectedIndexChanged += (s, e) =>
-            {
-                SyncNavSelection();
-                RefreshStandings();
-            };
+            _tabs.TabPages.Add(fencersTab);
+            _tabs.TabPages.Add(clubsTab);
+            _tabs.TabPages.Add(tournamentsTab);
+            _tabs.TabPages.Add(BuildStandingsTab());
+            _tabs.SelectedIndexChanged += (s, e) => { SyncNavSelection(); RefreshStandings(); };
 
             var header = BuildHeader();
             _accentStripe = new Panel { Dock = DockStyle.Top, Height = 2, BackColor = UiTheme.Accent };
@@ -112,7 +93,6 @@ namespace HemaLeagueManager.Forms
 
             Resize += (s, e) => LayoutSidebar();
             LayoutSidebar();
-
             SyncNavSelection();
         }
 
@@ -258,9 +238,10 @@ namespace HemaLeagueManager.Forms
                 Padding = new Padding(0, 12, 0, 0)
             };
             stack.Controls.Add(BuildSidebarSectionLabel("LEAGUE"));
-            stack.Controls.Add(BuildSidebarButton("+  New League",     (s, e) => { CloseSidebar(); NewLeague(); }, primary: true));
-            stack.Controls.Add(BuildSidebarButton("Switch League",     (s, e) => { CloseSidebar(); SwitchLeague(); }));
-            stack.Controls.Add(BuildSidebarButton("Close League",      (s, e) => { CloseSidebar(); CloseLeague(); }));
+            stack.Controls.Add(BuildSidebarButton("+  New League",        (s, e) => { CloseSidebar(); NewLeague(); }, primary: true));
+            stack.Controls.Add(BuildSidebarButton("Switch League",        (s, e) => { CloseSidebar(); SwitchLeague(); }));
+            stack.Controls.Add(BuildSidebarButton("Close League",         (s, e) => { CloseSidebar(); CloseLeague(); }));
+            stack.Controls.Add(BuildSidebarButton("Start Empty Project",  (s, e) => { CloseSidebar(); StartEmptyProject(); }));
 
             stack.Controls.Add(BuildSidebarSectionLabel("FILE"));
             stack.Controls.Add(BuildSidebarButton("Save As…",          (s, e) => { CloseSidebar(); SaveAs(); }));
@@ -399,19 +380,28 @@ namespace HemaLeagueManager.Forms
         // ---- Autosave on every change ----
         private void OnDataChanged()
         {
-            FencerRegistry.Save();
-            ClubRegistry.Save();
-
-            LeagueLibrary.SaveAutosave(_league);
-
-            if (!string.IsNullOrEmpty(_leaguePath))
-            {
-                try { LeagueLibrary.Save(_league, _leaguePath); }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
-            }
-
+            AutosaveProject();
             UpdateAutosaveStatus();
             RefreshAll();
+        }
+
+        private void AutosaveProject()
+        {
+            SyncProjectFromMemory();
+            try { ProjectStorage.Save(_project, LeagueLibrary.AutosavePath); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+        }
+
+        /// <summary>Pull live registry/active-league state into the Project before saving.</summary>
+        private void SyncProjectFromMemory()
+        {
+            _project.Fencers = FencerRegistry.All.ToList();
+            _project.Clubs   = ClubRegistry.All.ToList();
+            _project.ActiveLeagueName = _league.Name ?? "";
+
+            // Make sure the active league is in the project's list.
+            if (!string.IsNullOrWhiteSpace(_league.Name) && !_project.Leagues.Contains(_league))
+                _project.Leagues.Add(_league);
         }
 
         private void UpdateAutosaveStatus()
@@ -419,8 +409,8 @@ namespace HemaLeagueManager.Forms
             if (_autosaveStatus == null) return;
             _autosaveStatus.Text =
                 $"Autosaved at {DateTime.Now:HH:mm:ss}\n" +
-                $"League: {LeagueLibrary.AutosavePath}\n" +
-                $"Fencers: {FencerRegistry.FilePath}";
+                $"Project: {LeagueLibrary.AutosavePath}\n" +
+                $"{_project.Leagues.Count} leagues  •  {FencerRegistry.All.Count} fencers";
         }
 
         private void RefreshAll()
@@ -428,13 +418,214 @@ namespace HemaLeagueManager.Forms
             _subtitleLabel.Text = string.IsNullOrWhiteSpace(_league.Name)
                 ? "No league loaded"
                 : $"{_league.Name}{(_league.IsClosed ? "  •  Closed" : "")}";
-
             if (_subtitleLabel.Parent is Panel p) PositionSubtitle(p);
 
             _fencersPage.Refresh();
             _clubsPage.Refresh();
             _tournamentsPage.Refresh();
             RefreshStandings();
+        }
+
+        // ---- League actions ----
+        private void NewLeague()
+        {
+            using var dlg = new LeagueNameDialog("Season " + DateTime.Now.Year);
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            if (string.IsNullOrWhiteSpace(dlg.LeagueName)) return;
+
+            var league = new League { Name = dlg.LeagueName, Fencers = FencerRegistry.All };
+            _project.Leagues.Add(league);
+            _league = league;
+            _project.ActiveLeagueName = league.Name;
+
+            AutosaveProject();
+            UpdateAutosaveStatus();
+            RefreshAll();
+        }
+
+        private void SwitchLeague()
+        {
+            if (_project.Leagues.Count == 0)
+            {
+                ConfirmDialog.Ask(this, "Switch League",
+                    "There are no leagues yet. Create one first via 'New League'.",
+                    yesText: "OK", noText: "Cancel");
+                return;
+            }
+
+            using var dlg = new SwitchLeagueDialog(_project.Leagues, _project.ActiveLeagueName);
+            if (dlg.ShowDialog(this) == DialogResult.OK && dlg.SelectedLeague != null)
+            {
+                _league = dlg.SelectedLeague;
+                _league.Fencers = FencerRegistry.All;   // re-bind shared list
+                _project.ActiveLeagueName = _league.Name;
+                AutosaveProject();
+                UpdateAutosaveStatus();
+                RefreshAll();
+            }
+        }
+
+        private void CloseLeague()
+        {
+            if (string.IsNullOrWhiteSpace(_league.Name)) return;
+
+            var yes = ConfirmDialog.Ask(this, "Close League",
+                "Close the current league?\n\nIt will become read-only until you create or load another league.",
+                yesText: "Close", noText: "Cancel", primaryYes: false);
+            if (!yes) return;
+
+            _league.IsClosed = true;
+            AutosaveProject();
+            UpdateAutosaveStatus();
+            RefreshAll();
+        }
+
+        private void SaveAs()
+        {
+            using var dlg = new SaveFileDialog
+            {
+                Filter = "HEMA project (*.csv)|*.csv",
+                FileName = "HemaProject.csv"
+            };
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+            SyncProjectFromMemory();
+            ProjectStorage.Save(_project, dlg.FileName);
+            MessageBox.Show("Project saved to:\n" + dlg.FileName, "Saved");
+        }
+
+        private void LoadFromFile()
+        {
+            using var dlg = new OpenFileDialog { Filter = "HEMA project (*.csv)|*.csv" };
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            try
+            {
+                var loaded = ProjectStorage.Load(dlg.FileName);
+                ApplyLoadedProject(loaded);
+                AutosaveProject();          // mirror into autosave
+                UpdateAutosaveStatus();
+                RefreshAll();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to load project:\n" + ex.Message, "Error");
+            }
+        }
+
+        private void ExportPdf()
+        {
+            if (string.IsNullOrWhiteSpace(_league.Name))
+            {
+                MessageBox.Show("Create or load a league first.");
+                return;
+            }
+
+            using var dlg = new SaveFileDialog
+            {
+                Filter = "PDF document (*.pdf)|*.pdf",
+                FileName = $"{_league.Name} - Report.pdf"
+            };
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            try
+            {
+                PdfReportService.Generate(_league, dlg.FileName);
+                if (ConfirmDialog.Ask(this, "PDF Exported",
+                        $"Saved to:\n{dlg.FileName}\n\nOpen now?",
+                        yesText: "Open", noText: "Close"))
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = dlg.FileName, UseShellExecute = true
+                    });
+                }
+            }
+            catch (Exception ex) { MessageBox.Show("PDF export failed:\n" + ex.Message, "Error"); }
+        }
+
+        // ---- Startup ----
+        private void LoadAutosaveIfAny()
+        {
+            if (!LeagueLibrary.AutosaveExists())
+            {
+                _project = new Project();
+                _league = new League();
+                return;
+            }
+
+            try
+            {
+                var loaded = ProjectStorage.Load(LeagueLibrary.AutosavePath);
+                ApplyLoadedProject(loaded);
+                UpdateAutosaveStatus();
+            }
+            catch
+            {
+                _project = new Project();
+                _league = new League();
+            }
+        }
+
+        /// <summary>Replace in-memory state with a freshly-loaded project.</summary>
+        private void ApplyLoadedProject(Project loaded)
+        {
+            _project = loaded;
+            FencerRegistry.Replace(_project.Fencers);
+            ClubRegistry.Replace(_project.Clubs);
+            ClubRegistry.EnsureFromFencers(FencerRegistry.All);
+
+            // Every league shares the same fencer list (the registry).
+            foreach (var l in _project.Leagues)
+                l.Fencers = FencerRegistry.All;
+
+            // Restore the active league, defaulting to the first one if available.
+            _league = _project.Leagues.FirstOrDefault(l =>
+                l.Name.Equals(_project.ActiveLeagueName, StringComparison.OrdinalIgnoreCase))
+                ?? _project.Leagues.FirstOrDefault()
+                ?? new League { Fencers = FencerRegistry.All };
+
+            // Keep the project list in sync with the (replaced) registry references.
+            _project.Fencers = FencerRegistry.All.ToList();
+            _project.Clubs   = ClubRegistry.All.ToList();
+        }
+
+        private bool EnsureLeagueOrCreate()
+        {
+            if (!string.IsNullOrWhiteSpace(_league.Name)) return true;
+
+            var yes = ConfirmDialog.Ask(this, "No league loaded",
+                "Tournaments must belong to a league, but no league is loaded.\n\nWould you like to create a new league now?",
+                yesText: "Create league", noText: "Cancel");
+            if (!yes) return false;
+
+            NewLeague();
+            return !string.IsNullOrWhiteSpace(_league.Name);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            AutosaveProject();
+            base.OnFormClosing(e);
+        }
+
+        private void StartEmptyProject()
+        {
+            using var dlg = new StartEmptyDialog();
+            if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+            _project = new Project();
+            _league  = new League { Fencers = FencerRegistry.All };
+
+            if (dlg.Result == StartEmptyDialog.Choice.ClearEverything)
+            {
+                FencerRegistry.Replace(Array.Empty<Fencer>());
+                ClubRegistry.Replace(Array.Empty<Club>());
+            }
+
+            LeagueLibrary.DeleteAutosave();
+            AutosaveProject();
+            UpdateAutosaveStatus();
+            RefreshAll();
         }
 
         private void RefreshStandings()
@@ -458,168 +649,13 @@ namespace HemaLeagueManager.Forms
 
                 var item = new ListViewItem(rankText);
                 item.SubItems.Add(name);
-                item.SubItems.Add(f?.ClubName ?? "");
+                item.SubItems.Add(ClubRegistry.GetShortName(f?.ClubName ?? ""));
                 item.SubItems.Add(f?.Sex ?? "");
                 item.SubItems.Add(pts.ToString());
                 if (rank <= 3) item.ForeColor = UiTheme.Accent;
                 _standingsView.Items.Add(item);
                 rank++;
             }
-        }
-
-        // ---- League actions ----
-        private void NewLeague()
-        {
-            var name = Microsoft.VisualBasic.Interaction.InputBox(
-                "League name:", "New League", "Season " + DateTime.Now.Year);
-            if (string.IsNullOrWhiteSpace(name)) return;
-
-            _league = new League { Name = name.Trim() };
-            EnsureSharedFencers();
-            _leaguePath = LeagueLibrary.Save(_league);
-            LeagueLibrary.SaveAutosave(_league);
-            FencerRegistry.Save();
-            UpdateAutosaveStatus();
-            RefreshAll();
-        }
-
-        private void SwitchLeague()
-        {
-            using var dlg = new SwitchLeagueDialog();
-            if (dlg.ShowDialog(this) == DialogResult.OK && dlg.SelectedPath != null)
-            {
-                _league = LeagueLibrary.Load(dlg.SelectedPath);
-                _leaguePath = dlg.SelectedPath;
-                EnsureSharedFencers();
-                LeagueLibrary.SaveAutosave(_league);
-                FencerRegistry.Save();
-                UpdateAutosaveStatus();
-                RefreshAll();
-            }
-        }
-
-        private void CloseLeague()
-        {
-            if (string.IsNullOrWhiteSpace(_league.Name)) return;
-
-            if (MessageBox.Show("Close current league? It will become read-only.", "Confirm",
-                MessageBoxButtons.YesNo) == DialogResult.Yes)
-            {
-                _league.IsClosed = true;
-                if (!string.IsNullOrEmpty(_leaguePath))
-                    LeagueLibrary.Save(_league, _leaguePath);
-                LeagueLibrary.SaveAutosave(_league);
-                UpdateAutosaveStatus();
-                RefreshAll();
-            }
-        }
-
-        private void SaveAs()
-        {
-            if (string.IsNullOrWhiteSpace(_league.Name))
-            {
-                MessageBox.Show("Create a new league first.");
-                return;
-            }
-            using var dlg = new SaveFileDialog
-            {
-                Filter = "CSV files (*.csv)|*.csv",
-                FileName = _league.Name + ".csv"
-            };
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-            {
-                LeagueStorage.Save(_league, dlg.FileName);
-                MessageBox.Show("Saved to:\n" + dlg.FileName, "Saved");
-            }
-        }
-
-        private void LoadFromFile()
-        {
-            using var dlg = new OpenFileDialog { Filter = "CSV files (*.csv)|*.csv" };
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-            {
-                _league = LeagueStorage.Load(dlg.FileName);
-                _leaguePath = null;
-                EnsureSharedFencers();
-                LeagueLibrary.SaveAutosave(_league);
-                FencerRegistry.Save();
-                UpdateAutosaveStatus();
-                RefreshAll();
-            }
-        }
-
-        private void ExportPdf()
-        {
-            if (string.IsNullOrWhiteSpace(_league.Name))
-            {
-                MessageBox.Show("Create or load a league first.");
-                return;
-            }
-
-            using var dlg = new SaveFileDialog
-            {
-                Filter = "PDF document (*.pdf)|*.pdf",
-                FileName = $"{_league.Name} - Report.pdf"
-            };
-            if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
-            try
-            {
-                PdfReportService.Generate(_league, dlg.FileName);
-                if (MessageBox.Show($"Saved to:\n{dlg.FileName}\n\nOpen now?", "PDF Exported",
-                        MessageBoxButtons.YesNo) == DialogResult.Yes)
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = dlg.FileName,
-                        UseShellExecute = true
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("PDF export failed:\n" + ex.Message, "Error");
-            }
-        }
-
-        // ---- Startup ----
-        private void TryLoadAutosave()
-        {
-            var loaded = LeagueLibrary.LoadAutosaveIfExists();
-            if (loaded != null)
-            {
-                _league = loaded;
-                if (!string.IsNullOrWhiteSpace(_league.Name))
-                {
-                    var libPath = LeagueLibrary.PathFor(_league.Name);
-                    if (System.IO.File.Exists(libPath)) _leaguePath = libPath;
-                }
-                UpdateAutosaveStatus();
-            }
-            else
-            {
-                var latest = LeagueLibrary.ListLeagueFiles().FirstOrDefault();
-                if (latest != null)
-                {
-                    try
-                    {
-                        _league = LeagueLibrary.Load(latest);
-                        _leaguePath = latest;
-                        LeagueLibrary.SaveAutosave(_league);
-                        UpdateAutosaveStatus();
-                    }
-                    catch { }
-                }
-            }
-        }
-
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            if (!string.IsNullOrWhiteSpace(_league.Name))
-                LeagueLibrary.SaveAutosave(_league);
-            FencerRegistry.Save();
-            ClubRegistry.Save();
-            base.OnFormClosing(e);
         }
     }
 }

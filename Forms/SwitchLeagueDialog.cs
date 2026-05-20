@@ -1,133 +1,105 @@
-using System;
+﻿using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using HemaLeagueManager.Services;
+using HemaLeagueManager.Models;
 
 namespace HemaLeagueManager.Forms
 {
     public class SwitchLeagueDialog : Form
     {
-        private ListView _list = null!;
+        private readonly List<League> _leagues;
+        private ListBox _list = null!;
 
-        public string? SelectedPath { get; private set; }
+        public League? SelectedLeague { get; private set; }
 
-        public SwitchLeagueDialog()
+        public SwitchLeagueDialog(IEnumerable<League> leagues, string? activeLeagueName)
         {
-            BuildUi();
-            LoadLeagues();
-        }
+            _leagues = leagues.OrderBy(l => l.Name).ToList();
 
-        private void BuildUi()
-        {
             Text = "Switch League";
-            Size = new Size(620, 460);
             StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MinimizeBox = false;
+            MaximizeBox = false;
+            ShowInTaskbar = false;
             BackColor = UiTheme.Background;
             ForeColor = UiTheme.TextPrimary;
             Font = UiTheme.Body;
-            MinimizeBox = false;
-            MaximizeBox = false;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            Padding = new Padding(16);
+            ClientSize = new Size(520, 420);
 
-            var title = new Label
+            var titleBar = new Panel
             {
-                Text = "Choose a league",
+                Dock = DockStyle.Top, Height = 60, BackColor = UiTheme.Header,
+                Padding = new Padding(24, 14, 24, 0)
+            };
+            titleBar.Controls.Add(new Label
+            {
+                Text = "⚔  Switch League",
                 Font = UiTheme.TitleMedium,
                 ForeColor = UiTheme.Accent,
-                Dock = DockStyle.Top,
-                Height = 36
-            };
-            var sub = new Label
+                AutoSize = true,
+                Location = new Point(0, 10)
+            });
+            var stripe = new Panel { Dock = DockStyle.Top, Height = 2, BackColor = UiTheme.Accent };
+
+            var bottom = new Panel
             {
-                Text = "Leagues are stored in " + LeagueLibrary.LibraryFolder,
-                Font = UiTheme.Small,
-                ForeColor = UiTheme.TextMuted,
-                Dock = DockStyle.Top,
-                Height = 22
+                Dock = DockStyle.Bottom, Height = 64, BackColor = UiTheme.Header,
+                Padding = new Padding(20, 14, 20, 14)
+            };
+            var btnCancel = new FlatButton { Text = "Cancel", Width = 110, Height = 36, DialogResult = DialogResult.Cancel };
+            var btnOk = new FlatButton { Text = "Open", Width = 110, Height = 36, IsPrimary = true, DialogResult = DialogResult.OK };
+            btnOk.Click += (s, e) =>
+            {
+                if (_list.SelectedItem is League l) SelectedLeague = l;
+                else DialogResult = DialogResult.None;
             };
 
-            _list = new ListView
+            var row = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Right, FlowDirection = FlowDirection.RightToLeft,
+                Width = 260, BackColor = UiTheme.Header
+            };
+            row.Controls.Add(btnOk);
+            row.Controls.Add(btnCancel);
+            bottom.Controls.Add(row);
+
+            var body = new Panel
+            {
+                Dock = DockStyle.Fill, Padding = new Padding(24, 16, 24, 16), BackColor = UiTheme.Background
+            };
+            _list = new ListBox
             {
                 Dock = DockStyle.Fill,
-                View = View.Details,
-                FullRowSelect = true,
-                GridLines = false,
                 BackColor = UiTheme.SurfaceAlt,
                 ForeColor = UiTheme.TextPrimary,
                 Font = UiTheme.Body,
                 BorderStyle = BorderStyle.None,
-                HeaderStyle = ColumnHeaderStyle.Nonclickable
+                IntegralHeight = false,
+                ItemHeight = 28
             };
-            _list.Columns.Add("League", 320);
-            _list.Columns.Add("Last modified", 200);
-            _list.DoubleClick += (s, e) => Accept();
+            _list.DoubleClick += (s, e) => { btnOk.PerformClick(); };
+            foreach (var l in _leagues)
+                _list.Items.Add(l);
 
-            var buttons = new FlowLayoutPanel
+            if (!string.IsNullOrWhiteSpace(activeLeagueName))
             {
-                Dock = DockStyle.Bottom,
-                Height = 52,
-                FlowDirection = FlowDirection.RightToLeft,
-                Padding = new Padding(0, 10, 0, 0),
-                BackColor = UiTheme.Background
-            };
-            var btnCancel = new FlatButton { Text = "Cancel", Width = 100, DialogResult = DialogResult.Cancel };
-            var btnOpen = new FlatButton { Text = "Open", Width = 100, IsPrimary = true };
-            btnOpen.Click += (s, e) => Accept();
-            var btnDelete = new FlatButton { Text = "Delete", Width = 100 };
-            btnDelete.SetColors(UiTheme.Danger, UiTheme.DangerHover, Color.White);
-            btnDelete.Click += (s, e) => DeleteSelected();
+                var active = _leagues.FirstOrDefault(l =>
+                    l.Name.Equals(activeLeagueName, System.StringComparison.OrdinalIgnoreCase));
+                if (active != null) _list.SelectedItem = active;
+            }
+            if (_list.SelectedIndex < 0 && _list.Items.Count > 0) _list.SelectedIndex = 0;
 
-            buttons.Controls.Add(btnCancel);
-            buttons.Controls.Add(btnOpen);
-            buttons.Controls.Add(btnDelete);
+            body.Controls.Add(_list);
 
-            Controls.Add(_list);
-            Controls.Add(buttons);
-            Controls.Add(sub);
-            Controls.Add(title);
+            Controls.Add(body);
+            Controls.Add(bottom);
+            Controls.Add(stripe);
+            Controls.Add(titleBar);
 
-            AcceptButton = btnOpen;
+            AcceptButton = btnOk;
             CancelButton = btnCancel;
-        }
-
-        private void LoadLeagues()
-        {
-            _list.Items.Clear();
-            foreach (var file in LeagueLibrary.ListLeagueFiles())
-            {
-                var item = new ListViewItem(Path.GetFileNameWithoutExtension(file)) { Tag = file };
-                item.SubItems.Add(File.GetLastWriteTime(file).ToString("yyyy-MM-dd HH:mm"));
-                _list.Items.Add(item);
-            }
-            if (_list.Items.Count > 0) _list.Items[0].Selected = true;
-        }
-
-        private void Accept()
-        {
-            if (_list.SelectedItems.Count == 0)
-            {
-                MessageBox.Show("Select a league first.");
-                return;
-            }
-            SelectedPath = (string)_list.SelectedItems[0].Tag!;
-            DialogResult = DialogResult.OK;
-            Close();
-        }
-
-        private void DeleteSelected()
-        {
-            if (_list.SelectedItems.Count == 0) return;
-            var path = (string)_list.SelectedItems[0].Tag!;
-            var name = Path.GetFileNameWithoutExtension(path);
-            if (MessageBox.Show($"Delete league '{name}'? This cannot be undone.",
-                    "Confirm", MessageBoxButtons.YesNo) == DialogResult.Yes)
-            {
-                LeagueLibrary.Delete(path);
-                LoadLeagues();
-            }
         }
     }
 }
